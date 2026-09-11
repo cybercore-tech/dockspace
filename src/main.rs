@@ -1,3 +1,4 @@
+mod activity;
 mod cybergrid;
 mod dockercmd;
 mod scanner;
@@ -6,11 +7,15 @@ mod views;
 use axum::{
     extract::{Path as AxPath, State},
     http::header,
+    response::sse::{Event, Sse},
     response::{Html, IntoResponse},
     routing::{get, post},
     Router,
 };
+use futures_util::stream::Stream;
+use futures_util::StreamExt;
 use std::collections::{HashMap, HashSet};
+use std::convert::Infallible;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -28,6 +33,9 @@ struct AppState {
     /// stack's action succeeds. Surfaced as an error banner on its card —
     /// previously a failure was silently swallowed entirely.
     last_error: Arc<Mutex<HashMap<String, String>>>,
+    /// Recent-activity feed — sencho's audit log, scaled down (see
+    /// `activity.rs`).
+    activity: Arc<activity::Log>,
 }
 
 #[tokio::main]
@@ -43,6 +51,7 @@ async fn main() {
         root,
         pending: Arc::new(Mutex::new(HashSet::new())),
         last_error: Arc::new(Mutex::new(HashMap::new())),
+        activity: Arc::new(activity::Log::new()),
     };
 
     let app = Router::new()
@@ -54,7 +63,12 @@ async fn main() {
         .route("/stacks/:id/restart", post(action_restart))
         .route("/stacks/:id/logs", get(logs_view))
         .route("/stacks/:id/logs/refresh", get(logs_refresh))
+        .route("/stacks/:id/logs/stream", get(logs_stream_sse))
         .route("/stacks/:id/compose", get(compose_view).post(compose_save))
+        .route("/stacks/:id/compose/validate", post(compose_validate))
+        .route("/resources", get(resources_view))
+        .route("/resources/prune/:kind", post(resources_prune))
+        .route("/activity", get(activity_view))
         .route("/api/cybergrid/themes", get(cybergrid::list_themes))
         .route("/api/cybergrid/css/:name", get(cybergrid::theme_css))
         .route("/vendor/tokens.css", get(tokens_css))
@@ -64,7 +78,11 @@ async fn main() {
     // Loopback-only by design: this controls docker containers with zero
     // auth in v1. Fine on a single-user box reached over an SSH tunnel or
     // locally; don't put this behind a public bind address as-is.
-    let addr = SocketAddr::from(([127, 0, 0, 1], 7070));
+    let port: u16 = std::env::var("DOCKSPACE_PORT")
+        .ok()
+        .and_then(|p| p.parse().ok())
+        .unwrap_or(7070);
+    let addr = SocketAddr::from(([127, 0, 0, 1], port));
     tracing::info!("dockspace listening on http://{addr}");
     let listener = tokio::net::TcpListener::bind(addr)
         .await
@@ -126,13 +144,15 @@ async fn render_one_card(state: &AppState, stack: &scanner::Stack) -> String {
             &dockercmd::StackStatus::Unknown,
             true,
             error.as_deref(),
+            None,
         );
     }
 
     let compose_path = stack.abs_path.join(&stack.compose_file);
     let ps_result = dockercmd::ps(&compose_path).await;
     let status = dockercmd::derive_status(&ps_result);
-    views::stack_card(stack, &status, false, error.as_deref())
+    let containers = ps_result.as_ref().ok().map(|v| v.as_slice());
+    views::stack_card(stack, &status, false, error.as_deref(), containers)
 }
 
 fn find_stack(state: &AppState, id: &str) -> Option<scanner::Stack> {
@@ -158,6 +178,7 @@ async fn run_action(state: AppState, id: String, action: &'static str) -> Html<S
 
     let pending = state.pending.clone();
     let last_error = state.last_error.clone();
+    let activity = state.activity.clone();
     let name = stack.name.clone();
     tokio::spawn(async move {
         let (ok, output) = dockercmd::action(&compose_path, action).await;
@@ -165,6 +186,8 @@ async fn run_action(state: AppState, id: String, action: &'static str) -> Html<S
             let tail: String = output.lines().rev().take(20).collect::<Vec<_>>().join("\n");
             last_error.lock().unwrap().insert(name.clone(), tail);
         }
+        let detail = if ok { None } else { Some(output) };
+        activity.record(action, name.clone(), ok, detail);
         pending.lock().unwrap().remove(&name);
     });
 
@@ -172,6 +195,7 @@ async fn run_action(state: AppState, id: String, action: &'static str) -> Html<S
         &stack,
         &dockercmd::StackStatus::Unknown,
         true,
+        None,
         None,
     ))
 }
@@ -239,8 +263,18 @@ async fn compose_save(
         .unwrap_or(body);
 
     let saved_msg = match std::fs::write(&compose_path, &raw) {
-        Ok(()) => None,
-        Err(e) => Some(format!("save failed: {e}")),
+        Ok(()) => {
+            state
+                .activity
+                .record("save", stack.name.clone(), true, None);
+            None
+        }
+        Err(e) => {
+            state
+                .activity
+                .record("save", stack.name.clone(), false, Some(e.to_string()));
+            Some(format!("save failed: {e}"))
+        }
     };
 
     page(views::compose_page(
@@ -316,6 +350,9 @@ async fn new_stack_create(State(state): State<AppState>, body: String) -> Html<S
     }
 
     let id = scanner::encode_name(name);
+    state
+        .activity
+        .record("create", name.to_string(), true, None);
     page(views::compose_page(
         name,
         &id,
@@ -323,4 +360,74 @@ async fn new_stack_create(State(state): State<AppState>, body: String) -> Html<S
         starter,
         Some("stack created — edit the placeholder above, then Save"),
     ))
+}
+
+/// Compose Doctor — validates the *edited* textarea content (not what's on
+/// disk yet) against `docker compose config`, matching sencho's preflight
+/// check. Doesn't touch the real compose file either way.
+async fn compose_validate(
+    State(state): State<AppState>,
+    AxPath(id): AxPath<String>,
+    body: String,
+) -> Html<String> {
+    let Some(stack) = find_stack(&state, &id) else {
+        return Html(views::validate_result(false, "stack not found"));
+    };
+    let compose_path = stack.abs_path.join(&stack.compose_file);
+    let raw = body
+        .strip_prefix("content=")
+        .map(urlencoded_decode)
+        .unwrap_or(body);
+
+    match dockercmd::validate_compose(&compose_path, &raw).await {
+        Ok(()) => Html(views::validate_result(true, "")),
+        Err(e) => Html(views::validate_result(false, &e)),
+    }
+}
+
+/// A live tail of `docker compose logs -f`, pushed to the browser over
+/// Server-Sent Events — the "aggregated log stream" sencho does, scoped to
+/// one stack at a time here rather than the whole fleet at once.
+async fn logs_stream_sse(
+    State(state): State<AppState>,
+    AxPath(id): AxPath<String>,
+) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
+    let compose_path = find_stack(&state, &id)
+        .map(|s| s.abs_path.join(&s.compose_file))
+        .unwrap_or_default();
+
+    let rx = dockercmd::logs_stream(&compose_path, 200);
+    let stream =
+        tokio_stream::wrappers::ReceiverStream::new(rx).map(|line| Ok(Event::default().data(line)));
+
+    Sse::new(stream).keep_alive(axum::response::sse::KeepAlive::default())
+}
+
+async fn resources_view() -> Html<String> {
+    let (images, volumes, networks) = tokio::join!(
+        dockercmd::list_images(),
+        dockercmd::list_volumes(),
+        dockercmd::list_networks()
+    );
+    page(views::resources_page(&images, &volumes, &networks))
+}
+
+async fn resources_prune(
+    State(state): State<AppState>,
+    AxPath(kind): AxPath<String>,
+) -> Html<String> {
+    let (ok, output) = dockercmd::prune(&kind).await;
+    let detail = if ok { None } else { Some(output) };
+    state.activity.record("prune", kind, ok, detail);
+
+    let (images, volumes, networks) = tokio::join!(
+        dockercmd::list_images(),
+        dockercmd::list_volumes(),
+        dockercmd::list_networks()
+    );
+    Html(views::resources_body(&images, &volumes, &networks))
+}
+
+async fn activity_view(State(state): State<AppState>) -> Html<String> {
+    page(views::activity_page(&state.activity.recent(100)))
 }

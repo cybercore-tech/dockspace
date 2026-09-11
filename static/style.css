@@ -356,7 +356,133 @@ main { max-width: 1200px; margin: 0 auto; padding: 1.5rem; }
 
 code { font-family: var(--font-mono, monospace); }
 
+/* --------------------------------------------------------------------------
+   Dashboard search
+   -------------------------------------------------------------------------- */
+.search-input { max-width: 360px; margin-top: 0.75rem; }
+
+/* --------------------------------------------------------------------------
+   Per-service breakdown inside a card — sencho shows each container's own
+   state, not just the rolled-up badge.
+   -------------------------------------------------------------------------- */
+.service-list {
+  list-style: none;
+  margin: 0 0 0.7rem;
+  padding: 0.5rem 0.6rem;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  font-size: 0.75rem;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+.svc-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  margin-right: 0.4rem;
+}
+.svc-dot-up { background: var(--acid); box-shadow: 0 0 6px color-mix(in srgb, var(--acid) 70%, transparent); }
+.svc-dot-down { background: var(--red); box-shadow: 0 0 6px color-mix(in srgb, var(--red) 70%, transparent); }
+
+/* --------------------------------------------------------------------------
+   Live log tail button
+   -------------------------------------------------------------------------- */
+#live-tail-btn.live-on {
+  color: var(--acid);
+  border-color: var(--acid);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--acid) 35%, transparent);
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+/* --------------------------------------------------------------------------
+   Resources page — images / volumes / networks tables with prune actions
+   -------------------------------------------------------------------------- */
+.res-section { margin-bottom: 1.75rem; }
+.res-section:last-child { margin-bottom: 0; }
+.res-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.6rem;
+}
+.res-head h2 {
+  margin: 0;
+  font-size: 0.95rem;
+  color: var(--fg);
+  text-shadow: 0 0 8px color-mix(in srgb, var(--purple) 35%, transparent);
+}
+.res-head button {
+  background: transparent;
+  border: 1px solid var(--red);
+  color: var(--red);
+  padding: 0.35rem 0.75rem;
+  border-radius: 3px;
+  font-family: inherit;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: box-shadow 0.15s ease;
+}
+.res-head button:hover { box-shadow: 0 0 10px color-mix(in srgb, var(--red) 35%, transparent); }
+
+.res-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.res-table th, .res-table td {
+  text-align: left;
+  padding: 0.5rem 0.7rem;
+  border-bottom: 1px solid var(--line);
+}
+.res-table th {
+  color: var(--muted);
+  font-size: 0.7rem;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  background: color-mix(in srgb, var(--panel) 60%, var(--bg));
+}
+.res-table tr:last-child td { border-bottom: none; }
+.res-table tr:hover td { background: color-mix(in srgb, var(--cyan) 6%, transparent); }
+
+/* --------------------------------------------------------------------------
+   Activity / audit log
+   -------------------------------------------------------------------------- */
+.activity-list { list-style: none; margin: 0; padding: 0; }
+.activity-row {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  padding: 0.55rem 0.7rem;
+  border-bottom: 1px solid var(--line);
+  font-size: 0.82rem;
+}
+.activity-row:last-child { border-bottom: none; }
+.activity-when { color: var(--muted); width: 5.5rem; flex-shrink: 0; }
+.activity-verb {
+  text-transform: uppercase;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  color: var(--cyan);
+  width: 4.5rem;
+  flex-shrink: 0;
+}
+.activity-subject { flex: 1; }
+.activity-status { font-size: 0.72rem; text-transform: uppercase; }
+.activity-ok .activity-status { color: var(--acid); }
+.activity-fail .activity-status { color: var(--red); }
+.activity-fail { cursor: help; }
+
 @media (max-width: 640px) {
   .topbar { flex-direction: column; gap: 0.6rem; align-items: stretch; }
   .grid { grid-template-columns: 1fr; }
+  .activity-row { flex-wrap: wrap; }
 }

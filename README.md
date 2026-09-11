@@ -30,11 +30,32 @@ for each one shows:
   runs in the background, and the next poll shows the actual outcome. A
   failed action shows an error banner on the card instead of silently
   doing nothing.
-- a log viewer (`docker compose logs --tail 200`, manual refresh)
+- a **per-service breakdown** on each card (each container's own state,
+  not just the rolled-up badge)
+- a **filter box** on the dashboard — narrows the grid to stacks/services
+  matching what you type, client-side, no round trip
+- a log viewer: a manual-refresh snapshot (`docker compose logs --tail
+  200`) plus a **live tail** button that opens a real Server-Sent-Events
+  stream of `docker compose logs -f`
 - a compose file **editor** — edit and Save writes straight back to that
-  stack's `compose.yaml`
+  stack's `compose.yaml`, plus a **Validate** button ("Compose Doctor")
+  that runs `docker compose config` against the edited content *before*
+  you save, so a typo shows up as an inline error instead of a broken file
+  on disk
 - **+ New Stack** — creates a folder under the scan root with a starter
   `compose.yaml`, opens straight into the editor to fill it in
+- a **Resources** page — every image/volume/network on the host, with a
+  scoped prune button for each
+- an **Activity** log — a recent-activity feed of every start/stop/
+  restart/save/create/prune, ok or failed, with a hover tooltip on
+  failures showing the real command output
+
+These are dockspace's take on the parts of
+[sencho](https://github.com/studio-saelix/sencho)'s feature set that make
+sense for a single-machine, no-auth, personal dashboard — sencho itself
+goes considerably further (fleet management across nodes, RBAC/SSO,
+Trivy vulnerability scanning, Blueprints, S3 archives, a host console) for
+teams managing more than one box.
 
 Every real Docker interaction shells out to the actual `docker` CLI —
 same approach as [cyberfleet](https://github.com/darkstardevx/cyberfleet)'s
@@ -79,13 +100,15 @@ Point it at a different root with `DOCKSPACE_ROOT=/path/to/stacks cargo run`.
 ## Known limitations (v1)
 
 - No authentication — see [SECURITY.md](SECURITY.md).
-- Logs are a snapshot (manual refresh), not a live tail. A real live tail
-  (SSE, `docker compose logs -f` piped through) is a natural next step.
-- The compose editor is a plain textarea — no syntax highlighting or YAML
-  validation before Save.
-- No container exec/shell access yet.
+- The compose editor is a plain textarea — no syntax highlighting, just
+  the Validate button's preflight check.
+- No container exec/shell access yet (sencho's "host console").
 - New stacks always start from the same generic Alpine placeholder — no
   template picker (e.g. "start from a Postgres stack") yet.
+- Single machine only — no fleet/multi-node management.
+- No image-update checking (comparing a running image's digest against
+  what's on the registry) or auto-heal/auto-update policies.
+- The activity log is in-memory only — it resets on restart.
 
 ## Docs
 
