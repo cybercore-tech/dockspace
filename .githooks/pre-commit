@@ -1,0 +1,15 @@
+#!/bin/sh
+set -e
+
+# Local pre-commit hook to auto-format Rust code before committing.
+# Usage: make this file executable (chmod +x .githooks/pre-commit) and
+# set your repo to use the hooks directory:
+#   git config core.hooksPath .githooks
+# Then commits will automatically run cargo fmt and stage changes.
+
+echo "Running cargo fmt..."
+cargo fmt --all
+
+git add -A
+
+exit 0
