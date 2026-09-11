@@ -54,6 +54,25 @@ impl Log {
         let log = self.0.lock().unwrap();
         log.iter().rev().take(n).map(render_entry).collect()
     }
+
+    /// Same data as `recent`, structured — for anything that wants to
+    /// render its own activity feed instead of parsing the HTML rows
+    /// (e.g. a Quickshell HUD's live "data flow" strip).
+    pub fn recent_json(&self, n: usize) -> Vec<serde_json::Value> {
+        let log = self.0.lock().unwrap();
+        log.iter()
+            .rev()
+            .take(n)
+            .map(|e| {
+                serde_json::json!({
+                    "ts": e.ts,
+                    "verb": e.verb,
+                    "subject": e.subject,
+                    "ok": e.ok,
+                })
+            })
+            .collect()
+    }
 }
 
 fn render_entry(e: &Entry) -> String {

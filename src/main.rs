@@ -70,6 +70,7 @@ async fn main() {
         .route("/resources/prune/:kind", post(resources_prune))
         .route("/activity", get(activity_view))
         .route("/api/summary", get(api_summary))
+        .route("/api/activity", get(api_activity))
         .route("/api/cybergrid/themes", get(cybergrid::list_themes))
         .route("/api/cybergrid/css/:name", get(cybergrid::theme_css))
         .route("/vendor/tokens.css", get(tokens_css))
@@ -474,4 +475,8 @@ async fn resources_prune(
 
 async fn activity_view(State(state): State<AppState>) -> Html<String> {
     page(views::activity_page(&state.activity.recent(100)))
+}
+
+async fn api_activity(State(state): State<AppState>) -> Json<serde_json::Value> {
+    Json(serde_json::json!({ "entries": state.activity.recent_json(30) }))
 }
