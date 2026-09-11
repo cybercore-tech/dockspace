@@ -10,7 +10,7 @@ use axum::{
     response::sse::{Event, Sse},
     response::{Html, IntoResponse},
     routing::{get, post},
-    Router,
+    Json, Router,
 };
 use futures_util::stream::Stream;
 use futures_util::StreamExt;
@@ -69,6 +69,7 @@ async fn main() {
         .route("/resources", get(resources_view))
         .route("/resources/prune/:kind", post(resources_prune))
         .route("/activity", get(activity_view))
+        .route("/api/summary", get(api_summary))
         .route("/api/cybergrid/themes", get(cybergrid::list_themes))
         .route("/api/cybergrid/css/:name", get(cybergrid::theme_css))
         .route("/vendor/tokens.css", get(tokens_css))
@@ -120,6 +121,37 @@ async fn index(State(state): State<AppState>) -> Html<String> {
 
 async fn partial_stacks(State(state): State<AppState>) -> Html<String> {
     Html(render_all_cards(&state).await)
+}
+
+/// A plain-JSON counterpart to the dashboard — for anything that wants the
+/// numbers without parsing HTML, e.g. a Quickshell bar widget or HUD panel.
+async fn api_summary(State(state): State<AppState>) -> Json<serde_json::Value> {
+    let stacks = scanner::scan(&state.root);
+    let (mut running, mut partial, mut stopped, mut unknown, mut working) = (0, 0, 0, 0, 0);
+
+    for stack in &stacks {
+        if state.pending.lock().unwrap().contains(&stack.name) {
+            working += 1;
+            continue;
+        }
+        let compose_path = stack.abs_path.join(&stack.compose_file);
+        let ps_result = dockercmd::ps(&compose_path).await;
+        match dockercmd::derive_status(&ps_result) {
+            dockercmd::StackStatus::Running => running += 1,
+            dockercmd::StackStatus::Partial => partial += 1,
+            dockercmd::StackStatus::Stopped => stopped += 1,
+            dockercmd::StackStatus::Unknown => unknown += 1,
+        }
+    }
+
+    Json(serde_json::json!({
+        "total": stacks.len(),
+        "running": running,
+        "partial": partial,
+        "stopped": stopped,
+        "unknown": unknown,
+        "working": working,
+    }))
 }
 
 async fn render_all_cards(state: &AppState) -> String {
