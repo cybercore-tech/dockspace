@@ -19,4 +19,4 @@ futures-util = "0.3"
 
 # shared CYBERGRID palette + design tokens — same pattern as cyberdeck's
 # `core` branch. Pinned to v0.3.0 (the first tag with tokens.rs).
-cybercore = { git = "https://github.com/darkstardevx/cybercore.git", tag = "v0.3.0" }
+cybercore = { git = "https://github.com/darkstardevx/cybercore.git", tag = "v0.3.1" }

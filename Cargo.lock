@@ -106,8 +106,8 @@ checksum = "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801"
 
 [[package]]
 name = "cybercore"
-version = "0.3.0"
-source = "git+https://github.com/darkstardevx/cybercore.git?tag=v0.3.0#5663ce26954f6e1016898f70347a357ea0e870ee"
+version = "0.3.1"
+source = "git+https://github.com/darkstardevx/cybercore.git?tag=v0.3.1#ad40f64a6051fc971909eed7702f3192e3f2ce17"
 dependencies = [
  "serde",
  "serde_json",
