@@ -416,6 +416,133 @@ pub async fn list_networks() -> Result<Vec<NetworkInfo>, String> {
     Ok(result)
 }
 
+#[derive(serde::Serialize)]
+pub struct ContainerInfo {
+    pub name: String,
+    pub image: String,
+    pub status: String,
+    /// "healthy" / "unhealthy" / "starting" / "none" — parsed out of
+    /// `Status` since `docker ps` doesn't expose a separate health field.
+    pub health: String,
+    pub state: String,
+}
+
+/// Every container on the host, running or not — the full inventory a
+/// health grid needs, distinct from `ps()` above which is scoped to one
+/// compose stack's own services.
+pub async fn list_all_containers() -> Result<Vec<ContainerInfo>, String> {
+    let out = Command::new("docker")
+        .arg("ps")
+        .arg("-a")
+        .arg("--format")
+        .arg("{{json .}}")
+        .output()
+        .await
+        .map_err(|e| e.to_string())?;
+    if !out.status.success() {
+        return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
+    }
+
+    let text = String::from_utf8_lossy(&out.stdout);
+    let mut result = Vec::new();
+    for line in text.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        if let Ok(v) = serde_json::from_str::<serde_json::Value>(line) {
+            let status = v
+                .get("Status")
+                .and_then(|s| s.as_str())
+                .unwrap_or_default()
+                .to_string();
+            let health = if status.contains("(healthy)") {
+                "healthy"
+            } else if status.contains("(unhealthy)") {
+                "unhealthy"
+            } else if status.contains("health: starting") {
+                "starting"
+            } else {
+                "none"
+            }
+            .to_string();
+            result.push(ContainerInfo {
+                name: v
+                    .get("Names")
+                    .and_then(|s| s.as_str())
+                    .unwrap_or_default()
+                    .to_string(),
+                image: v
+                    .get("Image")
+                    .and_then(|s| s.as_str())
+                    .unwrap_or_default()
+                    .to_string(),
+                state: v
+                    .get("State")
+                    .and_then(|s| s.as_str())
+                    .unwrap_or_default()
+                    .to_string(),
+                status,
+                health,
+            });
+        }
+    }
+    Ok(result)
+}
+
+/// System-wide zombie/defunct process count — pure `/proc` reading, no
+/// docker or elevated privilege needed, but it's the "ghost processes"
+/// half of the same telemetry section.
+pub fn zombie_count() -> usize {
+    let Ok(entries) = std::fs::read_dir("/proc") else {
+        return 0;
+    };
+    let mut count = 0;
+    for entry in entries.flatten() {
+        let is_pid_dir = entry
+            .file_name()
+            .to_str()
+            .is_some_and(|n| n.chars().all(|c| c.is_ascii_digit()));
+        if !is_pid_dir {
+            continue;
+        }
+        // stat's format is "pid (comm) state ..." — comm itself can
+        // contain spaces or parens, so split on the LAST ')' rather than
+        // on whitespace, then the very next field is the state letter.
+        if let Ok(stat) = std::fs::read_to_string(entry.path().join("stat")) {
+            if let Some(idx) = stat.rfind(')') {
+                if stat[idx + 1..].trim_start().starts_with('Z') {
+                    count += 1;
+                }
+            }
+        }
+    }
+    count
+}
+
+/// docker-proxy processes running right now. Each published port
+/// typically costs one for IPv4 and one for IPv6, so this tracks roughly
+/// 2× the currently-published port count — a number that doesn't settle
+/// back down after stacks stop is what an orphaned socket looks like in
+/// practice, which is why the API hands back the raw count for the
+/// caller to compare against currently-running containers rather than
+/// asserting "orphaned" itself.
+pub async fn docker_proxy_count() -> usize {
+    match Command::new("pgrep")
+        .arg("-c")
+        .arg("-x")
+        .arg("docker-proxy")
+        .output()
+        .await
+    {
+        Ok(o) => String::from_utf8_lossy(&o.stdout)
+            .trim()
+            .parse()
+            .unwrap_or(0),
+        Err(_) => 0,
+    }
+}
+
 /// `docker {image,volume,network,system} prune -f` — sencho's "scoped
 /// prune actions". `kind` is one of "images" / "volumes" / "networks" /
 /// "all" (the last being a full `system prune -f`, unused volumes still

@@ -71,6 +71,7 @@ async fn main() {
         .route("/activity", get(activity_view))
         .route("/api/summary", get(api_summary))
         .route("/api/activity", get(api_activity))
+        .route("/api/telemetry", get(api_telemetry))
         .route("/api/cybergrid/themes", get(cybergrid::list_themes))
         .route("/api/cybergrid/css/:name", get(cybergrid::theme_css))
         .route("/vendor/tokens.css", get(tokens_css))
@@ -479,4 +480,32 @@ async fn activity_view(State(state): State<AppState>) -> Html<String> {
 
 async fn api_activity(State(state): State<AppState>) -> Json<serde_json::Value> {
     Json(serde_json::json!({ "entries": state.activity.recent_json(30) }))
+}
+
+/// Docker/host telemetry for Mission Control's "Docker & Container
+/// Telemetry" section — bundled into one call since it's all cheap,
+/// host-wide (not scoped to a compose stack), and always shown together.
+async fn api_telemetry() -> Json<serde_json::Value> {
+    let (containers, zombies, proxies) = tokio::join!(
+        dockercmd::list_all_containers(),
+        async { dockercmd::zombie_count() },
+        dockercmd::docker_proxy_count()
+    );
+
+    let running_ports: usize = match &containers {
+        Ok(cs) => cs.iter().filter(|c| c.state == "running").count(),
+        Err(_) => 0,
+    };
+
+    Json(serde_json::json!({
+        "containers": containers.as_ref().ok(),
+        "containers_error": containers.err(),
+        "zombie_processes": zombies,
+        "docker_proxy_count": proxies,
+        // A rough orphan signal: more proxy processes than 2x running
+        // containers suggests some are left over from stacks no longer
+        // up. Not exact (containers can publish >1 port each), but a
+        // real, honest heuristic rather than a guess with no basis.
+        "docker_proxy_expected_max": running_ports * 2,
+    }))
 }
