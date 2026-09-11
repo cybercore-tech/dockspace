@@ -129,14 +129,23 @@ async fn api_summary(State(state): State<AppState>) -> Json<serde_json::Value> {
     let stacks = scanner::scan(&state.root);
     let (mut running, mut partial, mut stopped, mut unknown, mut working) = (0, 0, 0, 0, 0);
 
+    // Same concurrency fix as render_all_cards — see its comment. Stacks
+    // already mid-action are resolved locally (no docker call needed) and
+    // don't join the concurrent batch at all.
+    let mut to_check = Vec::new();
     for stack in &stacks {
         if state.pending.lock().unwrap().contains(&stack.name) {
             working += 1;
-            continue;
+        } else {
+            to_check.push(stack);
         }
+    }
+    let futures = to_check.iter().map(|stack| {
         let compose_path = stack.abs_path.join(&stack.compose_file);
-        let ps_result = dockercmd::ps(&compose_path).await;
-        match dockercmd::derive_status(&ps_result) {
+        async move { dockercmd::derive_status(&dockercmd::ps(&compose_path).await) }
+    });
+    for status in futures_util::future::join_all(futures).await {
+        match status {
             dockercmd::StackStatus::Running => running += 1,
             dockercmd::StackStatus::Partial => partial += 1,
             dockercmd::StackStatus::Stopped => stopped += 1,
@@ -154,13 +163,16 @@ async fn api_summary(State(state): State<AppState>) -> Json<serde_json::Value> {
     }))
 }
 
+/// Every stack's status is an independent `docker compose ps` — awaiting
+/// them one at a time made total latency scale with stack count (19 stacks
+/// × ~150-300ms of subprocess overhead each easily passed a 2s client-side
+/// timeout, e.g. Mission Control's HUD panel). Running them concurrently
+/// bounds latency to the slowest single stack instead of the sum of all of
+/// them; `join_all` preserves input order so the grid doesn't reshuffle.
 async fn render_all_cards(state: &AppState) -> String {
     let stacks = scanner::scan(&state.root);
-    let mut out = String::new();
-    for stack in &stacks {
-        out.push_str(&render_one_card(state, stack).await);
-    }
-    out
+    let futures = stacks.iter().map(|stack| render_one_card(state, stack));
+    futures_util::future::join_all(futures).await.concat()
 }
 
 async fn render_one_card(state: &AppState, stack: &scanner::Stack) -> String {
