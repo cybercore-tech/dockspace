@@ -6,8 +6,16 @@
 
 use std::path::Path;
 use std::process::Stdio;
+use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
+
+/// A `docker compose ps` on one wedged stack (a hung daemon call, a stuck
+/// registry lookup) used to block that request's task forever, with no
+/// way out short of restarting the whole service — that's what actually
+/// happened once already (2026-09-11). Every status-checking command gets
+/// a hard ceiling instead.
+const PS_TIMEOUT: Duration = Duration::from_secs(8);
 
 #[derive(Clone, serde::Serialize, PartialEq)]
 pub enum StackStatus {
@@ -29,16 +37,28 @@ pub struct ContainerState {
 /// shapes seen across compose versions: one JSON array, or newline-
 /// delimited JSON (one object per line).
 pub async fn ps(compose_path: &Path) -> Result<Vec<ContainerState>, String> {
-    let out = Command::new("docker")
-        .arg("compose")
+    let mut cmd = Command::new("docker");
+    cmd.arg("compose")
         .arg("-f")
         .arg(compose_path)
         .arg("ps")
         .arg("--format")
         .arg("json")
-        .output()
-        .await
-        .map_err(|e| e.to_string())?;
+        // Without this, a timed-out call above just stops waiting — the
+        // orphaned docker/docker-compose process keeps running (and can
+        // still itself be the thing wedged, piling up one more zombie per
+        // poll). Killing it on drop is what makes the timeout actually
+        // bound resource use, not just response latency.
+        .kill_on_drop(true);
+
+    let out = match tokio::time::timeout(PS_TIMEOUT, cmd.output()).await {
+        Ok(result) => result.map_err(|e| e.to_string())?,
+        Err(_) => {
+            return Err(format!(
+                "timed out after {PS_TIMEOUT:?} waiting on docker compose ps"
+            ))
+        }
+    };
 
     if !out.status.success() {
         return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
