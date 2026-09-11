@@ -51,7 +51,7 @@ async fn main() {
         root,
         pending: Arc::new(Mutex::new(HashSet::new())),
         last_error: Arc::new(Mutex::new(HashMap::new())),
-        activity: Arc::new(activity::Log::new()),
+        activity: Arc::new(activity::Log::load()),
     };
 
     let app = Router::new()
@@ -72,6 +72,17 @@ async fn main() {
         .route("/api/summary", get(api_summary))
         .route("/api/activity", get(api_activity))
         .route("/api/telemetry", get(api_telemetry))
+        // Separate literal routes rather than a `:action` wildcard segment —
+        // axum's router can't mix a wildcard and literal segments (logs,
+        // dockerfile) at the same path position even across HTTP methods.
+        .route("/api/container/:name/start", post(api_container_start))
+        .route("/api/container/:name/stop", post(api_container_stop))
+        .route("/api/container/:name/restart", post(api_container_restart))
+        .route("/api/container/:name/logs", get(api_container_logs))
+        .route(
+            "/api/container/:name/dockerfile",
+            get(api_container_dockerfile),
+        )
         .route("/api/cybergrid/themes", get(cybergrid::list_themes))
         .route("/api/cybergrid/css/:name", get(cybergrid::theme_css))
         .route("/vendor/tokens.css", get(tokens_css))
@@ -480,6 +491,73 @@ async fn activity_view(State(state): State<AppState>) -> Html<String> {
 
 async fn api_activity(State(state): State<AppState>) -> Json<serde_json::Value> {
     Json(serde_json::json!({ "entries": state.activity.recent_json(30) }))
+}
+
+async fn container_action_handler(
+    state: AppState,
+    name: String,
+    action: &'static str,
+) -> Json<serde_json::Value> {
+    let (ok, output) = dockercmd::container_action(&name, action).await;
+    state.activity.record(
+        action,
+        name.clone(),
+        ok,
+        if ok { None } else { Some(output.clone()) },
+    );
+    Json(serde_json::json!({ "ok": ok, "output": output }))
+}
+
+async fn api_container_start(
+    State(state): State<AppState>,
+    AxPath(name): AxPath<String>,
+) -> Json<serde_json::Value> {
+    container_action_handler(state, name, "start").await
+}
+async fn api_container_stop(
+    State(state): State<AppState>,
+    AxPath(name): AxPath<String>,
+) -> Json<serde_json::Value> {
+    container_action_handler(state, name, "stop").await
+}
+async fn api_container_restart(
+    State(state): State<AppState>,
+    AxPath(name): AxPath<String>,
+) -> Json<serde_json::Value> {
+    container_action_handler(state, name, "restart").await
+}
+
+async fn api_container_logs(AxPath(name): AxPath<String>) -> Json<serde_json::Value> {
+    let text = dockercmd::container_logs(&name, 200).await;
+    Json(serde_json::json!({ "logs": text }))
+}
+
+/// Best-effort: does this container correspond to a service in one of the
+/// compose stacks dockspace already scans, and does that stack's directory
+/// have a Dockerfile? Most host containers are pulled images with no local
+/// Dockerfile at all (vault, sencho) — this says so honestly rather than
+/// guessing.
+async fn api_container_dockerfile(
+    State(state): State<AppState>,
+    AxPath(name): AxPath<String>,
+) -> Json<serde_json::Value> {
+    let stacks = scanner::scan(&state.root);
+    for stack in &stacks {
+        let matches = stack.services.iter().any(|s| s == &name) || stack.name.ends_with(&name);
+        if !matches {
+            continue;
+        }
+        let df = stack.abs_path.join("Dockerfile");
+        if df.is_file() {
+            let content = std::fs::read_to_string(&df).unwrap_or_default();
+            return Json(serde_json::json!({
+                "found": true,
+                "path": df.display().to_string(),
+                "content": content,
+            }));
+        }
+    }
+    Json(serde_json::json!({ "found": false }))
 }
 
 /// Docker/host telemetry for Mission Control's "Docker & Container

@@ -543,6 +543,47 @@ pub async fn docker_proxy_count() -> usize {
     }
 }
 
+/// `docker {start,stop,restart} <name>` — a single container by name,
+/// distinct from `action()` above which operates on a whole compose
+/// stack. Needed because the Container Health Grid shows every container
+/// on the host, most of which (sencho, vault, the deploy stack) aren't
+/// stacks dockspace itself scans.
+pub async fn container_action(name: &str, action: &str) -> (bool, String) {
+    let verb = match action {
+        "start" => "start",
+        "stop" => "stop",
+        "restart" => "restart",
+        _ => return (false, format!("unknown action '{action}'")),
+    };
+    match Command::new("docker").arg(verb).arg(name).output().await {
+        Ok(out) => {
+            let mut text = String::from_utf8_lossy(&out.stdout).to_string();
+            text.push_str(&String::from_utf8_lossy(&out.stderr));
+            (out.status.success(), text)
+        }
+        Err(e) => (false, e.to_string()),
+    }
+}
+
+/// `docker logs --tail <n> <name>` for one container by name.
+pub async fn container_logs(name: &str, tail: u32) -> String {
+    let out = Command::new("docker")
+        .arg("logs")
+        .arg("--tail")
+        .arg(tail.to_string())
+        .arg(name)
+        .output()
+        .await;
+    match out {
+        Ok(o) => {
+            let mut text = String::from_utf8_lossy(&o.stdout).to_string();
+            text.push_str(&String::from_utf8_lossy(&o.stderr));
+            text
+        }
+        Err(e) => format!("error running docker logs: {e}"),
+    }
+}
+
 /// `docker {image,volume,network,system} prune -f` — sencho's "scoped
 /// prune actions". `kind` is one of "images" / "volumes" / "networks" /
 /// "all" (the last being a full `system prune -f`, unused volumes still
