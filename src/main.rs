@@ -10,13 +10,24 @@ use axum::{
     routing::{get, post},
     Router,
 };
+use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
 use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 use tower_http::services::ServeDir;
 
 #[derive(Clone)]
 struct AppState {
     root: PathBuf,
+    /// Stack names with an action (`up`/`down`/`restart`) currently running
+    /// in the background. Checked before ever calling `docker compose ps`
+    /// so a slow first-run image pull shows "WORKING…" instead of just
+    /// looking dead for however many minutes the pull takes.
+    pending: Arc<Mutex<HashSet<String>>>,
+    /// Last failed action's output per stack, cleared the next time that
+    /// stack's action succeeds. Surfaced as an error banner on its card —
+    /// previously a failure was silently swallowed entirely.
+    last_error: Arc<Mutex<HashMap<String, String>>>,
 }
 
 #[tokio::main]
@@ -28,17 +39,22 @@ async fn main() {
         .unwrap_or_else(|_| scanner::default_root());
     tracing::info!("scanning stacks under {}", root.display());
 
-    let state = AppState { root };
+    let state = AppState {
+        root,
+        pending: Arc::new(Mutex::new(HashSet::new())),
+        last_error: Arc::new(Mutex::new(HashMap::new())),
+    };
 
     let app = Router::new()
         .route("/", get(index))
         .route("/partial/stacks", get(partial_stacks))
+        .route("/stacks/new", get(new_stack_form).post(new_stack_create))
         .route("/stacks/:id/up", post(action_up))
         .route("/stacks/:id/down", post(action_down))
         .route("/stacks/:id/restart", post(action_restart))
         .route("/stacks/:id/logs", get(logs_view))
         .route("/stacks/:id/logs/refresh", get(logs_refresh))
-        .route("/stacks/:id/compose", get(compose_view))
+        .route("/stacks/:id/compose", get(compose_view).post(compose_save))
         .route("/api/cybergrid/themes", get(cybergrid::list_themes))
         .route("/api/cybergrid/css/:name", get(cybergrid::theme_css))
         .route("/vendor/tokens.css", get(tokens_css))
@@ -92,12 +108,31 @@ async fn render_all_cards(state: &AppState) -> String {
     let stacks = scanner::scan(&state.root);
     let mut out = String::new();
     for stack in &stacks {
-        let compose_path = stack.abs_path.join(&stack.compose_file);
-        let ps_result = dockercmd::ps(&compose_path).await;
-        let status = dockercmd::derive_status(&ps_result);
-        out.push_str(&views::stack_card(stack, &status));
+        out.push_str(&render_one_card(state, stack).await);
     }
     out
+}
+
+async fn render_one_card(state: &AppState, stack: &scanner::Stack) -> String {
+    let working = state.pending.lock().unwrap().contains(&stack.name);
+    let error = state.last_error.lock().unwrap().get(&stack.name).cloned();
+
+    if working {
+        // Skip the docker ps round-trip entirely while an action's in
+        // flight — the daemon can be fully occupied pulling a large image
+        // and a status query would just queue up behind it.
+        return views::stack_card(
+            stack,
+            &dockercmd::StackStatus::Unknown,
+            true,
+            error.as_deref(),
+        );
+    }
+
+    let compose_path = stack.abs_path.join(&stack.compose_file);
+    let ps_result = dockercmd::ps(&compose_path).await;
+    let status = dockercmd::derive_status(&ps_result);
+    views::stack_card(stack, &status, false, error.as_deref())
 }
 
 fn find_stack(state: &AppState, id: &str) -> Option<scanner::Stack> {
@@ -107,15 +142,38 @@ fn find_stack(state: &AppState, id: &str) -> Option<scanner::Stack> {
         .find(|s| s.name == name)
 }
 
+/// Marks the stack pending, spawns the real (possibly slow) docker command
+/// in the background instead of awaiting it, and returns immediately with
+/// an optimistic "WORKING…" card. The next `/partial/stacks` poll (every
+/// 4s) picks up the real outcome once the background task clears the
+/// pending flag — success clears any stale error, failure records one.
 async fn run_action(state: AppState, id: String, action: &'static str) -> Html<String> {
     let Some(stack) = find_stack(&state, &id) else {
         return Html("<div class=\"card\">stack not found — rescan?</div>".to_string());
     };
     let compose_path = stack.abs_path.join(&stack.compose_file);
-    let _ = dockercmd::action(&compose_path, action).await;
-    let ps_result = dockercmd::ps(&compose_path).await;
-    let status = dockercmd::derive_status(&ps_result);
-    Html(views::stack_card(&stack, &status))
+
+    state.pending.lock().unwrap().insert(stack.name.clone());
+    state.last_error.lock().unwrap().remove(&stack.name);
+
+    let pending = state.pending.clone();
+    let last_error = state.last_error.clone();
+    let name = stack.name.clone();
+    tokio::spawn(async move {
+        let (ok, output) = dockercmd::action(&compose_path, action).await;
+        if !ok {
+            let tail: String = output.lines().rev().take(20).collect::<Vec<_>>().join("\n");
+            last_error.lock().unwrap().insert(name.clone(), tail);
+        }
+        pending.lock().unwrap().remove(&name);
+    });
+
+    Html(views::stack_card(
+        &stack,
+        &dockercmd::StackStatus::Unknown,
+        true,
+        None,
+    ))
 }
 
 async fn action_up(State(state): State<AppState>, AxPath(id): AxPath<String>) -> Html<String> {
@@ -154,7 +212,115 @@ async fn compose_view(State(state): State<AppState>, AxPath(id): AxPath<String>)
     let content = std::fs::read_to_string(&compose_path).unwrap_or_default();
     page(views::compose_page(
         &stack.name,
+        &id,
         &compose_path.display().to_string(),
         &content,
+        None,
+    ))
+}
+
+async fn compose_save(
+    State(state): State<AppState>,
+    AxPath(id): AxPath<String>,
+    body: String,
+) -> Html<String> {
+    let Some(stack) = find_stack(&state, &id) else {
+        return page("<p>stack not found</p>".to_string());
+    };
+    let compose_path = stack.abs_path.join(&stack.compose_file);
+
+    // axum's default form/body extraction would try to urlencode-decode
+    // this as `content=...` — the client sends the raw textarea value as
+    // `content=<urlencoded>`, so decode that one field by hand rather than
+    // pull in a form extractor for a single field.
+    let raw = body
+        .strip_prefix("content=")
+        .map(urlencoded_decode)
+        .unwrap_or(body);
+
+    let saved_msg = match std::fs::write(&compose_path, &raw) {
+        Ok(()) => None,
+        Err(e) => Some(format!("save failed: {e}")),
+    };
+
+    page(views::compose_page(
+        &stack.name,
+        &id,
+        &compose_path.display().to_string(),
+        &raw,
+        saved_msg.as_deref().or(Some("saved")),
+    ))
+}
+
+fn urlencoded_decode(s: &str) -> String {
+    let bytes = s.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'+' => {
+                out.push(b' ');
+                i += 1;
+            }
+            b'%' if i + 2 < bytes.len() => {
+                if let Ok(byte) = u8::from_str_radix(&s[i + 1..i + 3], 16) {
+                    out.push(byte);
+                    i += 3;
+                } else {
+                    out.push(bytes[i]);
+                    i += 1;
+                }
+            }
+            b => {
+                out.push(b);
+                i += 1;
+            }
+        }
+    }
+    String::from_utf8_lossy(&out).to_string()
+}
+
+async fn new_stack_form() -> Html<String> {
+    page(views::new_stack_form(None))
+}
+
+async fn new_stack_create(State(state): State<AppState>, body: String) -> Html<String> {
+    let name = body
+        .strip_prefix("name=")
+        .map(urlencoded_decode)
+        .unwrap_or_default();
+    let name = name.trim().trim_matches('/');
+
+    if name.is_empty() || name.contains("..") {
+        return page(views::new_stack_form(Some("invalid name")));
+    }
+
+    let dir = state.root.join(name);
+    if dir.exists() {
+        return page(views::new_stack_form(Some(
+            "a stack with that name already exists",
+        )));
+    }
+    if std::fs::create_dir_all(&dir).is_err() {
+        return page(views::new_stack_form(Some(
+            "couldn't create that directory",
+        )));
+    }
+
+    let starter = "services:\n  app:\n    image: alpine:3.20\n    command: [\"tail\", \"-f\", \"/dev/null\"]\n";
+    let compose_path = dir.join("compose.yaml");
+    if std::fs::write(&compose_path, starter).is_err() {
+        return page(views::new_stack_form(Some(
+            "created the folder but couldn't write compose.yaml",
+        )));
+    }
+
+    let id = scanner::encode_name(name);
+    page(views::compose_page(
+        name,
+        &id,
+        &compose_path.display().to_string(),
+        starter,
+        Some("stack created — edit the placeholder above, then Save"),
     ))
 }
