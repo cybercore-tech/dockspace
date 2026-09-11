@@ -19,13 +19,22 @@ for each one shows:
 - live status (`docker compose ps`, refreshed every 4s via htmx polling) —
   Running / Partial / Stopped / **Unknown** (distinct on purpose: means
   `docker compose ps` itself failed — daemon unreachable, permission
-  denied — not "definitely stopped")
+  denied — not "definitely stopped") / **Working…** (an action is running
+  in the background right now — see below)
 - every service name and published port, parsed straight from the
   compose file's own YAML (both the short `"8081:8081"` and long
   `{target, published}` port syntaxes)
-- one-click Start / Stop / Restart
+- Start / Stop / Restart that stay responsive even when the underlying
+  `docker compose up` is slow (a cold image pull can take minutes) — the
+  click returns immediately with a "Working…" state, the real command
+  runs in the background, and the next poll shows the actual outcome. A
+  failed action shows an error banner on the card instead of silently
+  doing nothing.
 - a log viewer (`docker compose logs --tail 200`, manual refresh)
-- a read-only compose file viewer
+- a compose file **editor** — edit and Save writes straight back to that
+  stack's `compose.yaml`
+- **+ New Stack** — creates a folder under the scan root with a starter
+  `compose.yaml`, opens straight into the editor to fill it in
 
 Every real Docker interaction shells out to the actual `docker` CLI —
 same approach as [cyberfleet](https://github.com/darkstardevx/cyberfleet)'s
@@ -72,9 +81,11 @@ Point it at a different root with `DOCKSPACE_ROOT=/path/to/stacks cargo run`.
 - No authentication — see [SECURITY.md](SECURITY.md).
 - Logs are a snapshot (manual refresh), not a live tail. A real live tail
   (SSE, `docker compose logs -f` piped through) is a natural next step.
-- Compose files are read-only in the viewer — no in-browser editing yet.
+- The compose editor is a plain textarea — no syntax highlighting or YAML
+  validation before Save.
 - No container exec/shell access yet.
-- No "create a new stack from a template" flow yet.
+- New stacks always start from the same generic Alpine placeholder — no
+  template picker (e.g. "start from a Postgres stack") yet.
 
 ## Docs
 
