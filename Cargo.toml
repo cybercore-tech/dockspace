@@ -18,5 +18,6 @@ tokio-stream = { version = "0.1", features = ["sync"] }
 futures-util = "0.3"
 
 # shared CYBERGRID palette + design tokens — same pattern as cyberdeck's
-# `core` branch. Pinned to v0.3.0 (the first tag with tokens.rs).
-cybercore = { git = "https://github.com/darkstardevx/cybercore.git", tag = "v0.3.1" }
+# `core` branch. Pinned to v0.4.0 (chunked theme files, 72 themes total —
+# schema::load()'s API is unchanged from v0.3.1, this is a data-only bump).
+cybercore = { git = "https://github.com/darkstardevx/cybercore.git", tag = "v0.4.0" }
