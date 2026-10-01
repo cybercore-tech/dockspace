@@ -3,9 +3,9 @@
 A self-hosted dashboard for docker-compose stacks — inspired by
 [sencho](https://github.com/saelix) and similar tools (Portainer, Dockge),
 built from scratch in Rust with the shared
-[cybercore](https://github.com/darkstardevx/cybercore) CYBERGRID theme
+[cybercore](https://github.com/cybercore-tech/cybercore) CYBERGRID theme
 system and design tokens, matching the same `core`-branch pattern
-[cyberdeck](https://github.com/darkstardevx/cyberdeck) already uses.
+[cyberdeck](https://github.com/cybercore-tech/cyberdeck) already uses.
 
 <!-- screenshot goes here once one's taken -->
 
@@ -58,7 +58,7 @@ Trivy vulnerability scanning, Blueprints, S3 archives, a host console) for
 teams managing more than one box.
 
 Every real Docker interaction shells out to the actual `docker` CLI —
-same approach as [cyberfleet](https://github.com/darkstardevx/cyberfleet)'s
+same approach as [cyberfleet](https://github.com/cybercore-tech/cyberfleet)'s
 git integration: exact behavior parity with running the command yourself,
 instead of reimplementing Docker Engine API semantics against a crate that
 has to track every daemon version.
