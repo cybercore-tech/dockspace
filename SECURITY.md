@@ -20,7 +20,7 @@ Other things worth knowing:
 
 ## Reporting a vulnerability
 
-Email **cybercore.sh+security@gmail.com**. Include the affected file/commit, a minimal
+Email **[security@cybercoretech.net](mailto:security@cybercoretech.net)**. Include the affected file/commit, a minimal
 repro, and what you'd expect instead. Please don't post exploit details in
 a public issue until a fix has shipped.
 
