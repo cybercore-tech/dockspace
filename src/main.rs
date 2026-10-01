@@ -1,6 +1,7 @@
 mod activity;
 mod cybergrid;
 mod dockercmd;
+mod guard;
 mod scanner;
 mod views;
 
@@ -87,7 +88,9 @@ async fn main() {
         .route("/api/cybergrid/css/:name", get(cybergrid::theme_css))
         .route("/vendor/tokens.css", get(tokens_css))
         .nest_service("/static", ServeDir::new("static"))
-        .with_state(state);
+        .with_state(state)
+        // Refuse cross-site / DNS-rebound requests (see guard.rs).
+        .layer(axum::middleware::from_fn(guard::middleware));
 
     // Loopback-only by design: this controls docker containers with zero
     // auth in v1. Fine on a single-user box reached over an SSH tunnel or
@@ -96,6 +99,7 @@ async fn main() {
         .ok()
         .and_then(|p| p.parse().ok())
         .unwrap_or(7070);
+    guard::init(port);
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
     tracing::info!("dockspace listening on http://{addr}");
     let listener = tokio::net::TcpListener::bind(addr)
