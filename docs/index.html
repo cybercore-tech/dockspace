@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en" data-theme="dockspace-cargo-neon">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Dockspace — your compose stacks, at a glance</title>
+  <meta name="description" content="Dockspace: a self-hosted, loopback-only Rust dashboard for docker-compose stacks — live status, logs, an editor with validation, resources and activity.">
+  <meta name="theme-color" content="#09080f">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect x='10' y='14' width='80' height='20' fill='%23ff9000'/%3E%3Crect x='10' y='40' width='80' height='20' fill='%2300e5ff'/%3E%3Crect x='10' y='66' width='80' height='20' fill='%2339ff33'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    :root { --a1: var(--orange); --a2: var(--cyan); --a3: var(--acid); }
+    .dock { position: relative; width: min(100%, 32rem); aspect-ratio: 1; margin-inline: auto; }
+    .dock svg { width: 100%; height: 100%; overflow: visible; }
+    .crate { animation: float 6s ease-in-out infinite; }
+    .crate.b { animation-delay: -2s; } .crate.c { animation-delay: -4s; }
+    @keyframes float { 50% { transform: translateY(-8px); } }
+    .led { animation: led 3.6s steps(1) infinite; }
+    .led.l2 { animation-delay: -1.2s; } .led.l3 { animation-delay: -2.4s; }
+    @keyframes led { 0% { fill: var(--acid); } 33% { fill: var(--orange); } 66% { fill: var(--acid); } }
+    .status { position: absolute; left: 50%; bottom: -1.2rem; transform: translateX(-50%); width: 94%; padding: .55rem .8rem; background: color-mix(in srgb, var(--panel) 92%, transparent); border: 1px solid var(--line); font: .74rem/1 var(--mono); color: var(--muted); display: flex; justify-content: space-between; gap: 1rem; }
+    .status b { font-weight: 400; } .status .r { color: var(--acid); } .status .p { color: var(--orange); } .status .s { color: var(--muted); }
+  </style>
+  <script>
+    window.SITE = {
+      defaultTheme: 'dockspace-cargo-neon',
+      mashups: [
+        { id: 'dockspace-cargo-neon', label: 'CARGO NEON', base: 'cyberpunk-mainframe', accent: 'synthwave-outrun' },
+        { id: 'dockspace-harbor-lights', label: 'HARBOR LIGHTS', base: 'gruvbox-dark', accent: 'neosynth-beam' },
+        { id: 'dockspace-container-yard', label: 'CONTAINER YARD', base: 'dystopian-sector', accent: 'cyberdyne-factory' }
+      ]
+    };
+  </script>
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="https://cybercore-tech.github.io/" data-brand-phase="0" aria-label="Cybercore Tech home"><span class="brand-emblem">CC</span><span class="brand-name">CYBERCORE <b>/</b> DOCKSPACE<small>TOOLING</small></span></a>
+    <nav class="main-nav" aria-label="Primary"><a href="#features">FEATURES</a><a href="#security">SECURITY</a><a href="#setup">SETUP</a><a href="#themes">THEMES</a></nav>
+    <div class="theme-picker"><span class="theme-label">THEME</span><button id="themeButton" class="theme-button" type="button" aria-haspopup="listbox" aria-expanded="false" aria-controls="themeMenu">LOADING THEMES…</button><div id="themeMenu" class="theme-menu" role="listbox" aria-label="Theme" hidden></div></div>
+  </header>
+
+  <main>
+    <section class="wrap hero">
+      <div>
+        <p class="eyebrow">docker-compose dashboard · Rust · htmx</p>
+        <h1><span class="glitch" data-text="DOCK">DOCK</span><br><em>SPACE</em></h1>
+        <p class="tagline">Every compose stack on your machine — live, editable, one click from up or down.</p>
+        <p class="lede">Point it at a folder of stacks and it finds every <code>compose.yaml</code>: live status, services and ports, logs with a real live tail, an editor that validates before it saves, images/volumes/networks with scoped prune, and an activity feed. A single-machine take on the best parts of sencho — themed in the shared CYBERGRID palette.</p>
+        <div class="chips"><span class="chip"><b>◆</b> 127.0.0.1 ONLY</span><span class="chip"><b>◆</b> LIVE TAIL (SSE)</span><span class="chip"><b>◆</b> COMPOSE DOCTOR</span><span class="chip"><b>◆</b> MIT</span></div>
+        <div class="cta"><a class="btn" href="https://github.com/cybercore-tech/dockspace">VIEW SOURCE ↗</a><a class="btn ghost" href="#setup">RUN IT</a></div>
+      </div>
+      <div class="dock reveal" aria-hidden="true">
+        <svg viewBox="0 0 400 400">
+          <g style="stroke:var(--line)" opacity=".7"><path d="M40 300 L200 380 L360 300" fill="none"/><path d="M40 300 L200 220 L360 300" fill="none" stroke-dasharray="3 6"/></g>
+          <g class="crate"><g transform="translate(0,170)">
+            <path d="M200 40 L320 100 L200 160 L80 100 Z" style="fill:color-mix(in srgb, var(--a2) 26%, var(--panel));stroke:var(--a2)" stroke-width="2"/>
+            <path d="M80 100 L200 160 L200 200 L80 140 Z" style="fill:color-mix(in srgb, var(--a2) 14%, var(--panel));stroke:var(--a2)" stroke-width="2"/>
+            <path d="M320 100 L200 160 L200 200 L320 140 Z" style="fill:color-mix(in srgb, var(--a2) 8%, var(--panel));stroke:var(--a2)" stroke-width="2"/>
+            <circle class="led" cx="300" cy="126" r="6"/></g></g>
+          <g class="crate b"><g transform="translate(0,90)">
+            <path d="M200 40 L320 100 L200 160 L80 100 Z" style="fill:color-mix(in srgb, var(--a1) 26%, var(--panel));stroke:var(--a1)" stroke-width="2"/>
+            <path d="M80 100 L200 160 L200 200 L80 140 Z" style="fill:color-mix(in srgb, var(--a1) 14%, var(--panel));stroke:var(--a1)" stroke-width="2"/>
+            <path d="M320 100 L200 160 L200 200 L320 140 Z" style="fill:color-mix(in srgb, var(--a1) 8%, var(--panel));stroke:var(--a1)" stroke-width="2"/>
+            <circle class="led l2" cx="300" cy="126" r="6"/></g></g>
+          <g class="crate c"><g transform="translate(0,10)">
+            <path d="M200 40 L320 100 L200 160 L80 100 Z" style="fill:color-mix(in srgb, var(--a3) 22%, var(--panel));stroke:var(--a3)" stroke-width="2"/>
+            <path d="M80 100 L200 160 L200 200 L80 140 Z" style="fill:color-mix(in srgb, var(--a3) 12%, var(--panel));stroke:var(--a3)" stroke-width="2"/>
+            <path d="M320 100 L200 160 L200 200 L320 140 Z" style="fill:color-mix(in srgb, var(--a3) 7%, var(--panel));stroke:var(--a3)" stroke-width="2"/>
+            <circle class="led l3" cx="300" cy="126" r="6"/>
+            <text x="200" y="104" text-anchor="middle" style="fill:var(--white)" font-family="Share Tech Mono, monospace" font-size="13" letter-spacing="2">compose.yaml</text></g></g>
+        </svg>
+        <div class="status"><span><b class="r">● 3 RUNNING</b></span><span><b class="p">◐ 1 PARTIAL</b></span><span><b class="s">○ 13 STOPPED</b></span></div>
+      </div>
+    </section>
+
+    <section class="wrap section" id="features">
+      <div class="section-head reveal"><div><p class="eyebrow">01 / Features</p><h2>The whole harbor,<br><em>one screen.</em></h2></div><p>Everything refreshes on its own every few seconds, and slow actions never freeze the page — a cold image pull returns "Working…" instantly and the next poll shows the real outcome.</p></div>
+      <div class="grid g3">
+        <div class="card c-orange reveal"><span class="num">01 · LIVE STATUS</span><h3>RUNNING · PARTIAL · STOPPED · UNKNOWN</h3><p>From <code>docker compose ps</code>, with a per-service breakdown. <b>Unknown</b> is its own state — the daemon is unreachable, not "definitely stopped".</p></div>
+        <div class="card c-cyan reveal"><span class="num">02 · PORTS</span><h3>SERVICES &amp; PORTS</h3><p>Parsed straight from each compose file — both short <code>"8081:8081"</code> and long <code>{target, published}</code> syntax.</p></div>
+        <div class="card c-acid reveal"><span class="num">03 · ACTIONS</span><h3>UP · DOWN · RESTART</h3><p>Responsive even for slow pulls; a failed action shows a banner on the card instead of silently doing nothing.</p></div>
+        <div class="card c-pink reveal"><span class="num">04 · LOGS</span><h3>SNAPSHOT + LIVE TAIL</h3><p>Last 200 lines on demand, or a real Server-Sent-Events stream of <code>docker compose logs -f</code>.</p></div>
+        <div class="card c-purple reveal"><span class="num">05 · EDITOR</span><h3>COMPOSE DOCTOR</h3><p>Edit in place; <b>Validate</b> runs <code>docker compose config</code> on your edit before saving, so a typo is an inline error, not a broken file.</p></div>
+        <div class="card c-red reveal"><span class="num">06 · HOUSEKEEPING</span><h3>RESOURCES &amp; ACTIVITY</h3><p>Every image, volume and network with a scoped prune, plus a feed of every start/stop/save/prune — failures show the real command output.</p></div>
+      </div>
+    </section>
+
+    <section class="wrap section" id="security">
+      <div class="section-head reveal"><div><p class="eyebrow">02 / Security</p><h2>Root-grade power,<br><em>loopback-tight.</em></h2></div><p>Docker access is effectively root, and Dockspace has no login. So it binds to <code>127.0.0.1</code> only — and refuses the two tricks a web page can use to reach a localhost service.</p></div>
+      <div class="grid g2">
+        <div class="console reveal">
+          <div class="console-head"><span>● ● ● &nbsp; guard / live test</span><strong>ENFORCED</strong></div>
+          <pre class="term" data-type><span><span class="t-ok">200</span>  GET  dashboard</span><span><span class="t-ok">200</span>  POST from its own page <span class="t-dim">(same-origin)</span></span><span><span class="t-del">403</span>  POST from evil.example <span class="t-dim">(cross-site form)</span></span><span><span class="t-del">403</span>  POST with a foreign Origin</span><span><span class="t-del">403</span>  Host: evil.example <span class="t-dim">(DNS rebinding)</span></span><span><span class="t-ok">200</span>  curl, no browser headers</span></pre>
+        </div>
+        <ul class="list reveal"><li><b>Cross-site requests refused:</b> state-changing requests whose <code>Sec-Fetch-Site</code> or <code>Origin</code> isn't its own are blocked — no forged "save this compose file, now start it".</li><li><b>DNS rebinding refused:</b> every request must carry a loopback <code>Host</code> for its port.</li><li><b>Least privilege:</b> run it as a hardened service that gets the <code>docker</code> group itself, from a root-owned binary — so your login doesn't need Docker access at all.</li><li><b>Never expose it:</b> no auth by design; reach it locally or over an SSH tunnel.</li></ul>
+      </div>
+    </section>
+
+    <section class="wrap section" id="setup">
+      <div class="section-head reveal"><div><p class="eyebrow">03 / Setup</p><h2>Moor<br><em>the stacks.</em></h2></div><p>Keep one folder per stack (<code>compose.yaml</code> + <code>.env</code> + <code>config/</code>), point Dockspace at the root, and open the dashboard.</p></div>
+      <div class="grid g2">
+        <div class="reveal"><span class="label">BUILD + RUN</span>
+<pre class="code" data-copy><code>git clone https://github.com/cybercore-tech/dockspace
+cd dockspace && cargo build --release
+
+DOCKSPACE_ROOT=~/Containers DOCKSPACE_PORT=7070 \
+  ./target/release/dockspace
+<span class="c"># → http://127.0.0.1:7070</span></code></pre></div>
+        <div class="reveal"><span class="label">AS A HARDENED SERVICE (EXCERPT)</span>
+<pre class="code" data-copy><code>[<span class="k">Service</span>]
+User=<span class="n">youruser</span>
+SupplementaryGroups=<span class="s">docker</span>
+ExecStart=/usr/local/bin/dockspace
+Environment=DOCKSPACE_ROOT=<span class="n">/home/youruser/Containers</span>
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=<span class="n">/home/youruser/Containers /home/youruser/.cache/dockspace</span>
+CapabilityBoundingSet=</code></pre></div>
+      </div>
+    </section>
+
+    <section class="wrap section" id="themes">
+      <div class="section-head reveal"><div><p class="eyebrow">04 / Theme matrix</p><h2>Paint<br><em>the hulls.</em></h2></div><p>Every Cybercore palette from the shared schema, grouped by family — plus Dockspace's own <b>signature mashups</b>. Your pick follows you across Cybercore sites.</p></div>
+      <div class="theme-strip reveal"><div><span class="label">NOW RUNNING · <span id="themeCount">…</span></span><div class="now" data-active-theme>…</div><div class="recipe" id="themeRecipe"></div></div><div></div><div id="swatches"></div></div>
+    </section>
+
+    <section class="wrap section" style="padding-top:0">
+      <div class="card c-cyan related reveal"><div><span class="num">◆ FROM THE HUB</span><h3>CYBERDECK HUB</h3><p>Dockspace lives on the Cyberdeck tool board alongside the rest of the Cybercore stack.</p></div><a class="btn" href="https://cybercore-tech.github.io/cyberdeck-hub/">THE HUB ↗</a></div>
+    </section>
+  </main>
+
+  <footer><span>CYBERCORE TECH / DOCKSPACE / MIT / © <span id="year"></span></span><span><a href="https://cybercore-tech.github.io/">CYBERCORE-TECH.GITHUB.IO</a> · <a href="https://github.com/cybercore-tech/dockspace">SOURCE</a></span></footer>
+  <script src="app.js"></script>
+</body>
+</html>
