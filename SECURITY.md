@@ -20,8 +20,7 @@ Other things worth knowing:
 
 ## Reporting a vulnerability
 
-Email **darkstardevx@gmail.com** (primary) or, as a backup,
-**cybercore.sh@gmail.com**. Include the affected file/commit, a minimal
+Email **cybercore.sh+security@gmail.com**. Include the affected file/commit, a minimal
 repro, and what you'd expect instead. Please don't post exploit details in
 a public issue until a fix has shipped.
 
