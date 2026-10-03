@@ -1,6 +1,5 @@
 /* Cybercore project-site kit — shared styles. Palette vars are set live by
    app.js from the org theme registry; these are master-mix fallbacks. */
-@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Oxanium:wght@300;400;600;700&family=Share+Tech+Mono&display=swap');
 
 :root {
   --bg: #09080f; --white: #f0f0f2; --acid: #39ff33; --pink: #ff147f; --purple: #8a22e2;

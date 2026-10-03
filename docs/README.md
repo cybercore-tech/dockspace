@@ -1,17 +1,17 @@
 # Dockspace project site
 
-Served by GitHub Pages from `main` → `/docs` at
-<https://cybercore-tech.github.io/dockspace/>.
+GitHub Pages serves this directory from `main` → `/docs` at https://cybercore-tech.github.io/dockspace/.
 
-- `index.html`: page content, plus `window.SITE` (default theme and signature mashups)
-- `styles.css`, `app.js`: the shared Cybercore project-site kit (same files on every family site)
+Local preview: `python -m http.server 8792 --bind 127.0.0.1` from this directory, then open http://127.0.0.1:8792.
 
-Themes load at runtime from the org site's registry (`/data/cybergrid.json`,
-`/data/themes/<family>/<name>.json` on cybercore-tech.github.io), so every
-project site shares one source of truth. A signature mashup takes surfaces
-(bg/panel/line/muted/white) from its `base` palette and neons from its
-`accent` palette.
+- `index.html`: project content and signature Cybergrid theme recipes.
+- `app.js`, `styles.css`: existing Cybercore theme engine and shared presentation kit.
+- `dockspace.css`: Dockspace's control-room layout and responsive styling.
+- `playground.js`: three sample stacks, simulated actions/logs, sample Compose checker, session activity, and Ctrl/Cmd+K navigation.
+- `assets/`: Dockspace brand mark and locally bundled fonts with their licenses.
 
-Local preview: serve a folder containing `dockspace/` (this dir) and `data/`
-(copied or symlinked from the org site repo), then open
-`http://127.0.0.1:<port>/dockspace/`.
+Themes load from the shared registry at https://cybercore-tech.github.io/data. The visual fallback remains available offline.
+
+The playground runs entirely in memory. It does not contact Docker, save files, or execute commands. The Compose checker checks only the demonstrated sample fields; it does not parse arbitrary YAML or replace the real application's `docker compose config` validation.
+
+Publish by pushing these `docs/` changes to the repository's `main` branch, with GitHub Pages configured to deploy from `main` / `docs`.
