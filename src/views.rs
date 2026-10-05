@@ -56,6 +56,8 @@ window.addEventListener('DOMContentLoaded', async () => {{
     if (!response.ok) throw new Error('Theme catalog request failed.');
     const catalog = await response.json();
     themeAppearance = catalog.appearance || 'dark';
+    let knownThemeIds = catalog.themes.map(theme => theme.id).join('\\0');
+    let activeThemeId = catalog.active;
     const picker = document.getElementById('theme-picker');
     const groups = new Map();
     for (const theme of catalog.themes) {{
@@ -75,6 +77,22 @@ window.addEventListener('DOMContentLoaded', async () => {{
       return group;
     }}));
     await applyTheme(catalog.active, false);
+    const syncSharedTheme = async () => {{
+      if (document.hidden) return;
+      try {{
+        const response = await fetch('/api/cybergrid/themes', {{ cache: 'no-store' }});
+        if (!response.ok) return;
+        const current = await response.json();
+        if (current.themes.map(theme => theme.id).join('\\0') !== knownThemeIds) {{ location.reload(); return; }}
+        if (current.active !== activeThemeId || current.appearance !== themeAppearance) {{
+          activeThemeId = current.active;
+          themeAppearance = current.appearance || 'dark';
+          await applyTheme(activeThemeId, false);
+        }}
+      }} catch (error) {{ console.debug('Shared theme refresh deferred', error); }}
+    }};
+    setInterval(syncSharedTheme, 2000);
+    document.addEventListener('visibilitychange', syncSharedTheme);
   }} catch (error) {{
     console.error('Could not load Cybercore themes:', error);
   }}
