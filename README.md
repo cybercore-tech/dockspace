@@ -73,7 +73,7 @@ Uses Cybercore's shared theme-document catalog and design tokens:
   `/api/cybergrid/themes` and `/api/cybergrid/css/:id`; the top-bar picker
   shares its selection with other Cybercore apps.
 - The **Theme Studio** link opens the standalone visual editor at
-  `http://127.0.0.1:8761/`.
+  `http://127.0.0.1:8762/`.
 - Open pages receive shared theme and appearance change events; installing or
   removing themes refreshes the picker automatically.
 

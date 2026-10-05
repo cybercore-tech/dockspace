@@ -31,7 +31,7 @@ pub fn layout(body: &str) -> String {
     <select id="theme-picker" aria-label="Cybercore theme" onchange="applyTheme(this.value)">
       <option>Loading themes…</option>
     </select>
-    <a href="http://127.0.0.1:8761/" class="btn-ghost" target="_blank" rel="noopener">Theme Studio ↗</a>
+    <a href="http://127.0.0.1:8762/" class="btn-ghost" target="_blank" rel="noopener">Theme Studio ↗</a>
   </div>
 </header>
 <main>
@@ -102,6 +102,18 @@ window.addEventListener('DOMContentLoaded', async () => {{
 </body>
 </html>"#
     )
+}
+
+#[cfg(test)]
+mod theme_studio_tests {
+    use super::layout;
+
+    #[test]
+    fn theme_studio_link_uses_studio_port() {
+        let html = layout("");
+        assert!(html.contains("href=\"http://127.0.0.1:8762/\""));
+        assert!(!html.contains("127.0.0.1:8761"));
+    }
 }
 
 fn status_class(status: &StackStatus) -> &'static str {
