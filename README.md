@@ -65,19 +65,23 @@ has to track every daemon version.
 
 ## Theming
 
-Pulls in `cybercore` (pinned `v0.3.0`) for both halves of its design
-system:
+Uses Cybercore's shared theme-document catalog and design tokens:
 
 - `cybercore::tokens::CSS` — typography/spacing/radii/motion, served at
   `/vendor/tokens.css`
-- `cybercore::schema` — the 12-theme CYBERGRID color palette, served at
-  `/api/cybergrid/themes` (list) and `/api/cybergrid/css/:name` (a ready
-  `:root{}` block). The dropdown in the top bar switches themes live and
-  remembers your pick in `localStorage`.
+- `ThemeCatalog` — built-in and custom themes served at
+  `/api/cybergrid/themes` and `/api/cybergrid/css/:id`; the top-bar picker
+  shares its selection with other Cybercore apps.
+- The **Theme Studio** link opens the standalone visual editor at
+  `http://127.0.0.1:8761/`.
 
-None of dockspace's own CSS hardcodes a color — everything reads
-`var(--bg)`, `var(--acid)`, etc., so every one of the 12 themes reskins the
-whole dashboard, not just an accent.
+Dockspace pins Cybercore's upstream theme-catalog commit because the API is
+newer than the current crates.io release. Once the next Cybercore crate version
+is published, this dependency can move back to crates.io.
+
+None of Dockspace's own CSS hardcodes a color — everything reads
+`var(--bg)`, `var(--acid)`, etc., so the selected theme reskins the whole
+dashboard, not just an accent.
 
 ## Run it
 

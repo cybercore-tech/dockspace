@@ -1,60 +1,115 @@
-//! CYBERGRID palette bridge — same pattern as cyberdeck's `core` branch.
-//! Exposes the shared `cybercore` crate's named colour themes over HTTP so
-//! the dashboard can list and apply them.
-//!
-//! - `GET /api/cybergrid/themes`      — every theme + its 11 colour roles
-//! - `GET /api/cybergrid/css/:name`   — a ready `:root{ --bg:#… }` block
+//! CYBERGRID adapter over Cybercore's shared theme document catalog.
 
-use axum::{extract::Path, http::header, response::IntoResponse, Json};
+use axum::extract::{Path, Query};
+use axum::http::{header, StatusCode};
+use axum::response::{IntoResponse, Response};
+use axum::Json;
+use serde::Deserialize;
 use serde_json::{json, Value};
 
-fn role_map(name: &str, p: &cybercore::schema::Palette) -> Value {
+fn catalog() -> Result<cybercore::theme::ThemeCatalog, cybercore::theme::ThemeError> {
+    cybercore::theme::ThemeCatalog::load()
+}
+
+fn error(status: StatusCode, message: impl ToString) -> Response {
+    (status, Json(json!({ "error": message.to_string() }))).into_response()
+}
+
+fn palette_json(palette: &cybercore::schema::Palette) -> Value {
     json!({
-        "name": name,
-        "bg": p.bg,
-        "white": p.white,
-        "acid_green": p.acid_green,
-        "hot_pink": p.hot_pink,
-        "purple": p.purple,
-        "cyan": p.cyan,
-        "orange": p.orange,
-        "red": p.red,
-        "panel": p.panel,
-        "line": p.line,
-        "muted": p.muted,
+        "bg": palette.bg,
+        "white": palette.white,
+        "acid_green": palette.acid_green,
+        "hot_pink": palette.hot_pink,
+        "purple": palette.purple,
+        "cyan": palette.cyan,
+        "orange": palette.orange,
+        "red": palette.red,
+        "panel": palette.panel,
+        "line": palette.line,
+        "muted": palette.muted,
     })
 }
 
-pub async fn list_themes() -> impl IntoResponse {
-    let s = cybercore::schema::load();
-    let themes: Vec<Value> = s
-        .theme_names()
-        .filter_map(|n| s.theme(n).map(|p| role_map(n, p)))
+pub async fn list_themes() -> Response {
+    let Ok(catalog) = catalog() else {
+        return error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "could not load theme catalog",
+        );
+    };
+    let themes: Vec<Value> = catalog
+        .iter()
+        .map(|(id, entry)| {
+            let document = &entry.document;
+            json!({
+                "id": id,
+                "name": document.metadata.name,
+                "family": document.metadata.family,
+                "description": document.metadata.description,
+                "author": document.metadata.author,
+                "builtin": entry.builtin,
+                "palette": palette_json(&document.palette),
+                "variants": document.variants,
+                "design": document.design,
+            })
+        })
         .collect();
-    Json(json!({ "active": s.active, "themes": themes }))
+    Json(json!({
+        "active": catalog.active_id(),
+        "appearance": catalog.active_appearance(),
+        "themes": themes
+    }))
+    .into_response()
 }
 
-pub async fn theme_css(Path(name): Path<String>) -> impl IntoResponse {
-    let s = cybercore::schema::load();
-    let p = s.theme(&name).unwrap_or_else(|| s.active_theme());
-    let css = format!(
-        ":root{{\
---bg:#{bg};--fg:#{white};\
---acid:#{acid};--pink:#{pink};--purple:#{purple};--cyan:#{cyan};\
---orange:#{orange};--red:#{red};\
---panel:#{panel};--line:#{line};--muted:#{muted};\
-}}\n",
-        bg = p.bg,
-        white = p.white,
-        acid = p.acid_green,
-        pink = p.hot_pink,
-        purple = p.purple,
-        cyan = p.cyan,
-        orange = p.orange,
-        red = p.red,
-        panel = p.panel,
-        line = p.line,
-        muted = p.muted,
-    );
-    ([(header::CONTENT_TYPE, "text/css; charset=utf-8")], css)
+#[derive(Deserialize)]
+pub struct CssQuery {
+    appearance: Option<cybercore::theme::Appearance>,
+}
+
+pub async fn theme_css(Path(id): Path<String>, Query(query): Query<CssQuery>) -> Response {
+    let Ok(catalog) = catalog() else {
+        return error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "could not load theme catalog",
+        );
+    };
+    let Some(entry) = catalog.get(&id) else {
+        return error(StatusCode::NOT_FOUND, "theme not found");
+    };
+    (
+        [(header::CONTENT_TYPE, "text/css; charset=utf-8")],
+        entry
+            .document
+            .to_css(query.appearance.unwrap_or(catalog.active_appearance())),
+    )
+        .into_response()
+}
+
+pub async fn select_theme(Path(id): Path<String>) -> Response {
+    let mut catalog = match catalog() {
+        Ok(catalog) => catalog,
+        Err(error) => return self::error(StatusCode::BAD_REQUEST, error),
+    };
+    match catalog.select(&id) {
+        Ok(()) => Json(json!({ "active": id })).into_response(),
+        Err(error) => self::error(StatusCode::BAD_REQUEST, error),
+    }
+}
+
+pub async fn select_appearance(Path(mode): Path<String>) -> Response {
+    let appearance = match mode.as_str() {
+        "dark" => cybercore::theme::Appearance::Dark,
+        "light" => cybercore::theme::Appearance::Light,
+        _ => return error(StatusCode::BAD_REQUEST, "appearance must be dark or light"),
+    };
+    let mut catalog = match catalog() {
+        Ok(catalog) => catalog,
+        Err(error) => return self::error(StatusCode::BAD_REQUEST, error),
+    };
+    match catalog.set_appearance(appearance) {
+        Ok(()) => Json(json!({ "appearance": appearance })).into_response(),
+        Err(error) => self::error(StatusCode::BAD_REQUEST, error),
+    }
 }

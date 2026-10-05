@@ -86,6 +86,11 @@ async fn main() {
         )
         .route("/api/cybergrid/themes", get(cybergrid::list_themes))
         .route("/api/cybergrid/css/:name", get(cybergrid::theme_css))
+        .route("/api/cybergrid/active/:id", post(cybergrid::select_theme))
+        .route(
+            "/api/cybergrid/appearance/:mode",
+            post(cybergrid::select_appearance),
+        )
         .route("/vendor/tokens.css", get(tokens_css))
         .nest_service("/static", ServeDir::new("static"))
         .with_state(state)
@@ -115,19 +120,10 @@ async fn tokens_css() -> impl IntoResponse {
     )
 }
 
-/// Wraps a body in the full page shell, pulling the active CYBERGRID theme
-/// name + the full theme list for the picker dropdown.
+/// Wraps a body in the full page shell. Theme metadata is loaded by the
+/// browser from the shared Cybercore catalog.
 fn page(body: String) -> Html<String> {
-    let schema = cybercore::schema::load();
-    let active = schema.active.clone();
-    let options: String = schema
-        .theme_names()
-        .map(|n| {
-            let selected = if n == active { " selected" } else { "" };
-            format!("<option value=\"{n}\"{selected}>{n}</option>")
-        })
-        .collect();
-    Html(views::layout(&active, &options, &body))
+    Html(views::layout(&body))
 }
 
 async fn index(State(state): State<AppState>) -> Html<String> {

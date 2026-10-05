@@ -6,7 +6,7 @@
 use crate::dockercmd::{ContainerState, ImageInfo, NetworkInfo, StackStatus, VolumeInfo};
 use crate::scanner::{encode_name, Stack};
 
-pub fn layout(active_theme: &str, theme_options: &str, body: &str) -> String {
+pub fn layout(body: &str) -> String {
     format!(
         r#"<!DOCTYPE html>
 <html lang="en">
@@ -28,25 +28,56 @@ pub fn layout(active_theme: &str, theme_options: &str, body: &str) -> String {
     <a href="/resources" class="btn-ghost">Resources</a>
     <a href="/activity" class="btn-ghost">Activity</a>
     <a href="/stacks/new" class="btn-ghost">+ New Stack</a>
-    <select id="theme-picker" onchange="applyTheme(this.value)">
-      {theme_options}
+    <select id="theme-picker" aria-label="Cybercore theme" onchange="applyTheme(this.value)">
+      <option>Loading themes…</option>
     </select>
+    <a href="http://127.0.0.1:8761/" class="btn-ghost" target="_blank" rel="noopener">Theme Studio ↗</a>
   </div>
 </header>
 <main>
 {body}
 </main>
 <script>
-function applyTheme(name) {{
-  fetch('/api/cybergrid/css/' + name)
-    .then(r => r.text())
-    .then(css => {{ document.getElementById('theme-vars').textContent = css; }});
-  localStorage.setItem('dockspace-theme', name);
+let themeAppearance = 'dark';
+async function applyTheme(id, persist = true) {{
+  const picker = document.getElementById('theme-picker');
+  if (persist) {{
+    const selected = await fetch('/api/cybergrid/active/' + encodeURIComponent(id), {{ method: 'POST' }});
+    if (!selected.ok) throw new Error('Could not save the shared Cybercore theme.');
+  }}
+  const response = await fetch('/api/cybergrid/css/' + encodeURIComponent(id) + '?appearance=' + themeAppearance);
+  if (!response.ok) throw new Error('Could not load the selected Cybercore theme.');
+  document.getElementById('theme-vars').textContent = await response.text();
+  picker.value = id;
 }}
-window.addEventListener('DOMContentLoaded', () => {{
-  const saved = localStorage.getItem('dockspace-theme') || '{active_theme}';
-  document.getElementById('theme-picker').value = saved;
-  applyTheme(saved);
+window.addEventListener('DOMContentLoaded', async () => {{
+  try {{
+    const response = await fetch('/api/cybergrid/themes');
+    if (!response.ok) throw new Error('Theme catalog request failed.');
+    const catalog = await response.json();
+    themeAppearance = catalog.appearance || 'dark';
+    const picker = document.getElementById('theme-picker');
+    const groups = new Map();
+    for (const theme of catalog.themes) {{
+      const family = theme.family || 'Other';
+      if (!groups.has(family)) groups.set(family, []);
+      groups.get(family).push(theme);
+    }}
+    picker.replaceChildren(...[...groups].map(([family, themes]) => {{
+      const group = document.createElement('optgroup');
+      group.label = family;
+      for (const theme of themes) {{
+        const option = document.createElement('option');
+        option.value = theme.id;
+        option.textContent = theme.name;
+        group.append(option);
+      }}
+      return group;
+    }}));
+    await applyTheme(catalog.active, false);
+  }} catch (error) {{
+    console.error('Could not load Cybercore themes:', error);
+  }}
 }});
 </script>
 </body>
