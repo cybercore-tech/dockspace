@@ -91,7 +91,8 @@ window.addEventListener('DOMContentLoaded', async () => {{
         }}
       }} catch (error) {{ console.debug('Shared theme refresh deferred', error); }}
     }};
-    setInterval(syncSharedTheme, 2000);
+    const themeEvents = new EventSource('/api/cybergrid/events');
+    themeEvents.addEventListener('theme-change', syncSharedTheme);
     document.addEventListener('visibilitychange', syncSharedTheme);
   }} catch (error) {{
     console.error('Could not load Cybercore themes:', error);

@@ -74,12 +74,10 @@ Uses Cybercore's shared theme-document catalog and design tokens:
   shares its selection with other Cybercore apps.
 - The **Theme Studio** link opens the standalone visual editor at
   `http://127.0.0.1:8761/`.
-- Open pages refresh shared theme and appearance changes while visible;
-  installing or removing themes refreshes the picker automatically.
+- Open pages receive shared theme and appearance change events; installing or
+  removing themes refreshes the picker automatically.
 
-Dockspace pins Cybercore's upstream theme-catalog commit because the API is
-newer than the current crates.io release. Once the next Cybercore crate version
-is published, this dependency can move back to crates.io.
+Dockspace uses the published `cybercore` 0.8 theme engine from crates.io.
 
 None of Dockspace's own CSS hardcodes a color — everything reads
 `var(--bg)`, `var(--acid)`, etc., so the selected theme reskins the whole

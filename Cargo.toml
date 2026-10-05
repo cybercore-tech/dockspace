@@ -17,7 +17,5 @@ dirs = "6.0.0"
 tokio-stream = { version = "0.1", features = ["sync"] }
 futures-util = "0.3"
 
-# Shared CYBERGRID theme documents/catalog and design tokens. The catalog API
-# is newer than the published 0.6 crate, so pin its exact upstream commit
-# until the next crates.io release.
-cybercore = "0.7"
+# Shared CYBERGRID theme engine.
+cybercore = "0.8"

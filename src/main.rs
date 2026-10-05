@@ -85,6 +85,7 @@ async fn main() {
             get(api_container_dockerfile),
         )
         .route("/api/cybergrid/themes", get(cybergrid::list_themes))
+        .route("/api/cybergrid/events", get(cybergrid::theme_events))
         .route("/api/cybergrid/css/:name", get(cybergrid::theme_css))
         .route("/api/cybergrid/active/:id", post(cybergrid::select_theme))
         .route(
